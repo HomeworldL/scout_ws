@@ -12,8 +12,9 @@ from launch_ros.actions import Node
 
 @pytest.mark.parametrize('entry', ['mapping', 'localization'])
 @pytest.mark.parametrize('rviz', [None, 'true', 'false'])
-def test_description_does_not_override_parent_rviz(entry, rviz):
-    arguments = {'start_lidar': 'false', 'pcd': '/tmp/unused-map.pcd'}
+def test_description_does_not_override_parent_rviz(entry, rviz, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    arguments = {}
     if rviz is not None:
         arguments['rviz'] = rviz
     source = Path(__file__).parents[1] / 'launch' / f'{entry}.launch.py'
@@ -37,6 +38,12 @@ def test_description_does_not_override_parent_rviz(entry, rviz):
     assert executed.count(('rviz2', 'rviz2')) == (0 if rviz == 'false' else 1)
     assert ('robot_state_publisher', 'robot_state_publisher') in executed
     assert ('fastlio2', 'lio_node') in executed
+    assert not any(package == 'livox_ros_driver2' for package, _ in executed)
     backend = ('pgo', 'pgo_node') if entry == 'mapping' else ('localizer', 'localizer_node')
     assert backend in executed
     assert service.context.launch_configurations['rviz'] == (rviz or 'true')
+    assert 'start_lidar' not in service.context.launch_configurations
+    if entry == 'localization':
+        expected_pcd = str(Path(__file__).resolve().parents[3] / 'maps/site/map.pcd')
+        assert service.context.launch_configurations['pcd'] == expected_pcd
+        assert service.context.launch_configurations['base_z'] == 'auto'

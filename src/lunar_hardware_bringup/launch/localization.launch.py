@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, GroupAction, IncludeLaunchDescription
 from launch.conditions import IfCondition
@@ -10,27 +12,20 @@ from launch_ros.substitutions import FindPackageShare
 
 def generate_launch_description():
     share = FindPackageShare('lunar_hardware_bringup')
+    # --symlink-install resolves this file back into workspace/src/<package>/launch.
+    default_pcd = str(Path(__file__).resolve().parents[3] / 'maps/site/map.pcd')
     return LaunchDescription([
-        DeclareLaunchArgument('pcd', description='Absolute path to the saved map.pcd'),
-        DeclareLaunchArgument('base_z', default_value='0.18108',
-                              description='Initial base_link height in map, in metres'),
+        DeclareLaunchArgument('pcd', default_value=default_pcd,
+                              description='Saved PCD; defaults to workspace/maps/site/map.pcd'),
+        DeclareLaunchArgument('base_z', default_value='auto',
+                              description='auto: derive height from installation TF; or metres'),
         DeclareLaunchArgument('rviz', default_value='true'),
         DeclareLaunchArgument('use_sim_time', default_value='false'),
-        DeclareLaunchArgument('start_lidar', default_value='true'),
         DeclareLaunchArgument('lidar_yaw', default_value='1.5707963267948966'),
-        DeclareLaunchArgument('lidar_config', default_value=PathJoinSubstitution([
-            share, 'config', 'mid360.json'])),
         DeclareLaunchArgument('lio_config', default_value=PathJoinSubstitution([
             FindPackageShare('fastlio2'), 'config', 'lio.yaml'])),
         DeclareLaunchArgument('localizer_config', default_value=PathJoinSubstitution([
             FindPackageShare('localizer'), 'config', 'localizer.yaml'])),
-        IncludeLaunchDescription(PythonLaunchDescriptionSource(
-            PathJoinSubstitution([share, 'launch', 'lidar.launch.py'])),
-            condition=IfCondition(LaunchConfiguration('start_lidar')),
-            launch_arguments={
-                'lidar_config': LaunchConfiguration('lidar_config'),
-                'use_sim_time': LaunchConfiguration('use_sim_time'),
-            }.items()),
         # Keep the description's rviz=false local to this include.
         GroupAction(scoped=True, actions=[
             IncludeLaunchDescription(PythonLaunchDescriptionSource(PathJoinSubstitution([
@@ -56,7 +51,7 @@ def generate_launch_description():
         Node(package='lunar_hardware_bringup', executable='initial_pose_bridge.py',
              name='initial_pose_bridge', output='screen', parameters=[{
                  'pcd_path': LaunchConfiguration('pcd'),
-                 'base_z': ParameterValue(LaunchConfiguration('base_z'), value_type=float),
+                 'base_z': ParameterValue(LaunchConfiguration('base_z'), value_type=str),
                  'use_sim_time': LaunchConfiguration('use_sim_time')}]),
         Node(package='rviz2', executable='rviz2', output='screen',
              arguments=['-d', PathJoinSubstitution([share, 'rviz', 'localization.rviz'])],

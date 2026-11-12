@@ -12,21 +12,11 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('rviz', default_value='true'),
         DeclareLaunchArgument('use_sim_time', default_value='false'),
-        DeclareLaunchArgument('start_lidar', default_value='true'),
         DeclareLaunchArgument('lidar_yaw', default_value='1.5707963267948966'),
-        DeclareLaunchArgument('lidar_config', default_value=PathJoinSubstitution([
-            share, 'config', 'mid360.json'])),
         DeclareLaunchArgument('lio_config', default_value=PathJoinSubstitution([
             FindPackageShare('fastlio2'), 'config', 'lio.yaml'])),
         DeclareLaunchArgument('pgo_config', default_value=PathJoinSubstitution([
             FindPackageShare('pgo'), 'config', 'pgo.yaml'])),
-        IncludeLaunchDescription(PythonLaunchDescriptionSource(
-            PathJoinSubstitution([share, 'launch', 'lidar.launch.py'])),
-            condition=IfCondition(LaunchConfiguration('start_lidar')),
-            launch_arguments={
-                'lidar_config': LaunchConfiguration('lidar_config'),
-                'use_sim_time': LaunchConfiguration('use_sim_time'),
-            }.items()),
         # Keep the description's rviz=false local to this include.
         GroupAction(scoped=True, actions=[
             IncludeLaunchDescription(PythonLaunchDescriptionSource(PathJoinSubstitution([

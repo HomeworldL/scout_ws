@@ -32,11 +32,16 @@ def pose_matrix(pose):
     return matrix
 
 
-def make_request(base_pose, base_from_body, pcd_path, base_z):
+def make_request(base_pose, base_from_body, pcd_path, base_z=None):
     """T_map_body = T_map_base * T_base_body; upstream uses Rz*Rx*Ry."""
     map_from_base = pose_matrix(base_pose)
-    map_from_base[2, 3] = base_z
-    map_from_body = map_from_base @ pose_matrix(base_from_body)
+    base_from_body_matrix = pose_matrix(base_from_body)
+    # On the mapping-start floor, seed body at its original world height z=0.
+    # This computes base_link height from the actual mount, including its rotation.
+    map_from_base[2, 3] = (
+        -float((map_from_base[:3, :3] @ base_from_body_matrix[:3, 3])[2])
+        if base_z is None else base_z)
+    map_from_body = map_from_base @ base_from_body_matrix
     rotation = map_from_body[:3, :3]
     roll = math.asin(float(np.clip(rotation[2, 1], -1.0, 1.0)))
     if abs(math.cos(roll)) > 1e-7:
@@ -56,12 +61,13 @@ class InitialPoseBridge(Node):
     def __init__(self):
         super().__init__('initial_pose_bridge')
         self.declare_parameter('pcd_path', '')
-        self.declare_parameter('base_z', 0.18108)
+        self.declare_parameter('base_z', 'auto')
         self.pcd_path = str(Path(self.get_parameter('pcd_path').value).expanduser().resolve())
         if not Path(self.pcd_path).is_file():
             raise ValueError(f'PCD map does not exist: {self.pcd_path}')
-        self.base_z = float(self.get_parameter('base_z').value)
-        if not math.isfinite(self.base_z):
+        height = self.get_parameter('base_z').value
+        self.base_z = None if height == 'auto' else float(height)
+        if self.base_z is not None and not math.isfinite(self.base_z):
             raise ValueError('base_z must be finite')
         self.buffer = Buffer()
         self.listener = TransformListener(self.buffer, self)

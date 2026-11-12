@@ -79,3 +79,13 @@ def test_reject_zero_quaternion():
     invalid.orientation.w = 0.0
     with pytest.raises(ValueError):
         bridge.make_request(invalid, pose(), '/map.pcd', 0.18)
+
+
+@pytest.mark.parametrize('yaw', [0.0, 0.8, math.pi])
+def test_default_height_comes_from_mount(yaw):
+    mount = pose(0.17871, 0.011, 0.05738, math.pi/2)
+    request = bridge.make_request(pose(3.0, 4.0, z=12.0, yaw=yaw), mount, '/map.pcd')
+    assert request.z == pytest.approx(0.0)
+    # Reconstruct the car's height from the body seed and installation transform.
+    expected_base_z = request.z - mount.position.z
+    assert expected_base_z == pytest.approx(-0.05738)
