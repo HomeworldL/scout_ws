@@ -19,3 +19,7 @@
 	path = src/third_party/scout_ros2
 	url = https://github.com/agilexrobotics/scout_ros2.git
 	branch = humble
+[submodule "src/third_party/pcd2pgm"]
+	path = src/third_party/pcd2pgm
+	url = https://github.com/LihanChen2004/pcd2pgm.git
+	branch = main
