@@ -1,0 +1,9 @@
+scout_base:
+  ros__parameters:
+    odom_frame: wheel_odom
+    base_frame: base_link
+    odom_topic_name: /scout/wheel_odom
+    is_scout_mini: true
+    is_omni_wheel: false
+    simulated_robot: false
+    control_rate: 50
