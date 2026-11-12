@@ -1,0 +1,95 @@
+<?xml version="1.0"?>
+<!-- SPDX-License-Identifier: BSD-3-Clause; upstream attribution: ../UPSTREAM.md -->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="scout_mini">
+  <!-- LiDAR +X points left: base_link -> LiDAR yaw = +90 degrees, confirmed by user. -->
+  <xacro:arg name="lidar_yaw" default="1.5707963267948966"/>
+  <xacro:property name="lidar_yaw" value="$(arg lidar_yaw)"/>
+
+  <!-- Measured envelope from the existing vehicle model; SI units. -->
+  <xacro:property name="vehicle_length" value="0.62260"/>
+  <xacro:property name="vehicle_width" value="0.53302"/>
+  <xacro:property name="base_height" value="0.18108"/>
+  <xacro:property name="ground_clearance" value="0.130"/>
+  <xacro:property name="wheel_radius" value="0.085"/>
+  <xacro:property name="wheel_width" value="0.080"/>
+  <xacro:property name="wheel_x" value="${(vehicle_length - 2*wheel_radius)/2}"/>
+  <xacro:property name="wheel_y" value="${(vehicle_width - wheel_width)/2}"/>
+  <xacro:property name="wheel_z" value="${wheel_radius - base_height}"/>
+  <xacro:property name="body_length" value="${2*wheel_x}"/>
+  <xacro:property name="body_width" value="${vehicle_width - 2*wheel_width}"/>
+  <xacro:property name="body_height" value="${2*(base_height - ground_clearance)}"/>
+
+  <!-- LiDAR origin in vehicle base_link, inherited from the previous project; not remeasured here. -->
+  <xacro:property name="base_lidar_x" value="0.202"/>
+  <xacro:property name="base_lidar_y" value="0.0"/>
+  <xacro:property name="base_lidar_z" value="0.10150"/>
+  <!-- LiDAR origin in IMU/body: match FASTLIO2 lio.yaml r_il=I and t_il. -->
+  <xacro:property name="imu_lidar_x" value="-0.011"/>
+  <xacro:property name="imu_lidar_y" value="-0.02329"/>
+  <xacro:property name="imu_lidar_z" value="0.04412"/>
+
+  <link name="body"/>
+  <joint name="body_to_base_link" type="fixed">
+    <parent link="body"/>
+    <child link="base_link"/>
+    <!-- T_I_B = T_I_L * inverse(T_B_L); installation roll/pitch and r_il are zero. -->
+    <origin xyz="${imu_lidar_x - cos(lidar_yaw)*base_lidar_x - sin(lidar_yaw)*base_lidar_y}
+                 ${imu_lidar_y + sin(lidar_yaw)*base_lidar_x - cos(lidar_yaw)*base_lidar_y}
+                 ${imu_lidar_z - base_lidar_z}" rpy="0 0 ${-lidar_yaw}"/>
+  </joint>
+
+  <link name="base_link">
+    <!-- Official DAE axes: -Z forward, +Y up. Center and scale to the measured shell. -->
+    <visual>
+      <origin xyz="${-0.01769985*body_length/0.5606069} 0 ${0.022091165*body_height/0.18218067}"
+              rpy="${pi/2} 0 ${-pi/2}"/>
+      <geometry>
+        <mesh filename="package://scout_mini_description/meshes/scout_mini_base_link2.dae"
+              scale="${body_width/0.3898762} ${body_height/0.18218067} ${body_length/0.5606069}"/>
+      </geometry>
+    </visual>
+    <collision>
+      <geometry><box size="${body_length} ${body_width} ${body_height}"/></geometry>
+    </collision>
+  </link>
+
+  <!-- Fixed wheels provide a complete static TF tree without fabricated joint states. -->
+  <xacro:macro name="wheel" params="name x y">
+    <joint name="${name}_wheel_joint" type="fixed">
+      <parent link="base_link"/>
+      <child link="${name}_wheel_link"/>
+      <origin xyz="${x} ${y} ${wheel_z}" rpy="${-pi/2} 0 0"/>
+    </joint>
+    <link name="${name}_wheel_link">
+      <visual>
+        <origin xyz="${0.00000755*2*wheel_radius/0.1598965}
+                     ${0.00101843*2*wheel_radius/0.1599533}
+                     ${-0.01900502*wheel_width/0.132}"/>
+        <geometry>
+          <mesh filename="package://scout_mini_description/meshes/wheel.dae"
+                scale="${2*wheel_radius/0.1598965} ${2*wheel_radius/0.1599533} ${wheel_width/0.132}"/>
+        </geometry>
+      </visual>
+      <collision>
+        <geometry><cylinder radius="${wheel_radius}" length="${wheel_width}"/></geometry>
+      </collision>
+    </link>
+  </xacro:macro>
+  <xacro:wheel name="front_left" x="${wheel_x}" y="${wheel_y}"/>
+  <xacro:wheel name="rear_left" x="${-wheel_x}" y="${wheel_y}"/>
+  <xacro:wheel name="front_right" x="${wheel_x}" y="${-wheel_y}"/>
+  <xacro:wheel name="rear_right" x="${-wheel_x}" y="${-wheel_y}"/>
+
+  <link name="lidar_link"/>
+  <joint name="body_to_lidar" type="fixed">
+    <parent link="body"/>
+    <child link="lidar_link"/>
+    <origin xyz="${imu_lidar_x} ${imu_lidar_y} ${imu_lidar_z}" rpy="0 0 0"/>
+  </joint>
+  <link name="livox_frame"/>
+  <joint name="lidar_to_livox_frame" type="fixed">
+    <parent link="lidar_link"/>
+    <child link="livox_frame"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+</robot>
