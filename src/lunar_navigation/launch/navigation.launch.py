@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.conditions import IfCondition
@@ -9,8 +11,10 @@ from launch_ros.substitutions import FindPackageShare
 
 def generate_launch_description():
     share = FindPackageShare('lunar_navigation')
+    default_map = str(Path(__file__).resolve().parents[3] / 'maps/site/map.yaml')
     return LaunchDescription([
-        DeclareLaunchArgument('map', description='Absolute path to a 2D map YAML'),
+        DeclareLaunchArgument('map', default_value=default_map,
+                              description='2D YAML; defaults to workspace/maps/site/map.yaml'),
         DeclareLaunchArgument('params_file', default_value=PathJoinSubstitution([
             share, 'config', 'nav2.yaml'])),
         DeclareLaunchArgument('use_sim_time', default_value='false'),
