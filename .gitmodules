@@ -1,0 +1,20 @@
+[submodule "src/third_party/FASTLIO2_ROS2"]
+	path = src/third_party/FASTLIO2_ROS2
+	url = https://github.com/liangheming/FASTLIO2_ROS2.git
+	branch = main
+[submodule "src/third_party/Livox-SDK2"]
+	path = src/third_party/Livox-SDK2
+	url = https://github.com/Livox-SDK/Livox-SDK2.git
+	branch = master
+[submodule "src/third_party/livox_ros_driver2"]
+	path = src/third_party/livox_ros_driver2
+	url = https://github.com/Livox-SDK/livox_ros_driver2.git
+	branch = master
+[submodule "src/third_party/ugv_sdk"]
+	path = src/third_party/ugv_sdk
+	url = https://github.com/agilexrobotics/ugv_sdk.git
+	branch = main
+[submodule "src/third_party/scout_ros2"]
+	path = src/third_party/scout_ros2
+	url = https://github.com/agilexrobotics/scout_ros2.git
+	branch = humble
