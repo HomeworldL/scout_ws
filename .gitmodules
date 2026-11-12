@@ -2,6 +2,7 @@
 	path = src/third_party/FASTLIO2_ROS2
 	url = https://github.com/liangheming/FASTLIO2_ROS2.git
 	branch = main
+	ignore = dirty
 [submodule "src/third_party/Livox-SDK2"]
 	path = src/third_party/Livox-SDK2
 	url = https://github.com/Livox-SDK/Livox-SDK2.git
