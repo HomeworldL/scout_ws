@@ -5,6 +5,7 @@ Scout Mini + Livox MID360，Ubuntu 22.04 / ROS 2 Humble。使用 FASTLIO2 建图
 ## 运行顺序与地图用途
 
 ```text
+硬件：单独启动一次雷达驱动，建图/重定位共用其点云与 IMU
 阶段一：建图 → 保存 map.pcd → 转二维栅格 → 人工修图 → map.yaml + map.png/pgm
 阶段二：加载 map.pcd → RViz 指定车身初值 → 三维重定位
 阶段三：保留重定位 → 单独启动底盘与 Nav2 → 下发导航目标
@@ -14,14 +15,16 @@ Scout Mini + Livox MID360，Ubuntu 22.04 / ROS 2 Humble。使用 FASTLIO2 建图
 
 | 入口 | 启动内容 | 不包含 |
 | --- | --- | --- |
-| `lunar_hardware_bringup mapping.launch.py` | 雷达、description、FASTLIO2、PGO、可选 RViz | 底盘、Nav2 |
-| `lunar_hardware_bringup localization.launch.py` | 雷达、description、FASTLIO2、localizer、初值桥接、PCD 预览、可选 RViz | 底盘、Nav2 |
+| `lunar_hardware_bringup lidar.launch.py` | MID360 雷达/IMU 驱动 | 建图、定位、底盘、Nav2 |
+| `lunar_hardware_bringup mapping.launch.py` | description、FASTLIO2、PGO、可选 RViz | 雷达驱动、底盘、Nav2 |
+| `lunar_hardware_bringup localization.launch.py` | description、FASTLIO2、localizer、初值桥接、PCD 预览、可选 RViz | 雷达驱动、底盘、Nav2 |
 | `lunar_hardware_bringup chassis.launch.py` | Scout Mini 底盘驱动、速度反馈 | 雷达、定位、Nav2 |
+| `lunar_navigation pcd2pgm.launch.py` | 第三方点云转栅格、Nav2 自动保存 PGM/YAML、可选 RViz | 实物雷达、SLAM、底盘 |
 | `lunar_navigation navigation.launch.py` | 二维 map_server、Nav2、可选 RViz | 雷达、定位、底盘 |
 
 三个业务入口保持独立：**第三个导航 launch 不包含重定位。** 建图与重定位二选一；导航阶段运行“重定位 + 底盘 + 导航”。阶段二已经在运行时，阶段三沿用该定位进程。
 
-当前建图、保存、重定位和 Nav2 接线已有实现及软件验证。**PCD 转二维栅格工具尚未实现，这是从新建 PCD 到完整导航流程中仍缺的一步。** 有与 PCD 对齐的二维地图时可直接进入阶段三；仅验证重定位不需要二维地图。
+建图、保存、PCD 转二维栅格、重定位和 Nav2 接线均已有实现。默认三维输入为工作区根目录 `maps/site/map.pcd`，二维输出及导航输入为 `maps/site/map.yaml`、`map.pgm`；不随启动终端目录变化。该路径约定对应根脚本的 `--symlink-install` 构建，地图不写入功能包或 install 目录。仅验证重定位不需要二维地图。
 
 ## 1. 下载与依赖
 
@@ -97,7 +100,7 @@ Bash 用户将 `.zsh` 换成 `.bash`。实车默认 `use_sim_time=false`。
 3. 在系统网络设置中，为雷达连接的网卡配置同一网段的静态 IPv4。例如按当前样例使用 `192.168.1.5/24`；不要与雷达使用相同 IP。
 4. 驱动外参 `extrinsic_parameter` 保持零。雷达到车体的安装关系由 URDF 提供，LiDAR–IMU 外参由 FASTLIO2 配置提供。
 
-可先单独验证驱动：
+**雷达驱动必须单独启动，并在建图或重定位期间保持运行：**
 
 ```bash
 ros2 launch lunar_hardware_bringup lidar.launch.py
@@ -110,7 +113,7 @@ ros2 topic hz /livox/lidar
 ros2 topic hz /livox/imu
 ```
 
-建图、重定位入口默认自行启动雷达。独立测试结束后停止驱动，再运行业务入口；若保留已运行的驱动，则业务入口传 `start_lidar:=false`。不要重复启动两个雷达驱动。
+另开终端启动建图或重定位即可，它们只订阅已有的 `/livox/lidar` 与 `/livox/imu`，不创建驱动进程。切换建图/重定位时保留这个驱动终端。已移除 `start_lidar` 参数；播放包含这两个话题的 rosbag 时直接运行算法入口，不启动实物雷达驱动。
 
 ### 3.2 Scout Mini 电源、CAN 与控制
 
@@ -149,9 +152,9 @@ ros2 topic echo /scout/wheel_odom --once
 ros2 launch lunar_hardware_bringup mapping.launch.py
 ```
 
-包含雷达、机器人描述、FASTLIO2、PGO 和 RViz。初始化时保持车静止，等点云与轨迹稳定后再移动采集；可使用实体遥控器移动底盘，不需要 Nav2。
+先按第 3.1 节单独运行雷达驱动，再另开终端执行上述命令。此入口包含机器人描述、FASTLIO2、PGO 和 RViz，不包含雷达驱动。初始化时保持车静止，等点云与轨迹稳定后再移动采集；可使用实体遥控器移动底盘，不需要 Nav2。
 
-常用参数：`rviz:=false` 关闭显示，`start_lidar:=false` 复用外部驱动。算法配置直接使用当前上游文件：
+常用参数：`rviz:=false` 关闭显示。雷达配置只传给独立的 `lidar.launch.py`。算法配置直接使用当前上游文件：
 
 - `src/third_party/FASTLIO2_ROS2/fastlio2/config/lio.yaml`：LIO、话题、滤波、LiDAR–IMU 外参。
 - `src/third_party/FASTLIO2_ROS2/pgo/config/pgo.yaml`：关键帧、回环和地图坐标。
@@ -181,21 +184,54 @@ maps/site/
 
 当前流程不依赖 HBA。`maps/` 已被 Git 忽略，不提交实测地图。
 
-### 4.3 PCD 转二维栅格
+### 4.3 PCD 转二维栅格（默认第三方工具）
 
-**此步骤的转换工具尚未实现，当前没有可执行的 PCD 转图命令。** PGO 保存服务只生成三维地图；`map_saver_cli` 也不能直接把 PCD 转成二维图。下面是该步骤需要产生的结果，不代表转换已经跑通。
+保存 PCD 后离线执行，不需要雷达、SLAM 或底盘进程：
 
-转换需要保留 PCD 的 map 坐标，区分地面和车高范围内的障碍，按 XY 栅格化，输出 `map.yaml` 和灰度图。建议起始分辨率为 0.05 m/格。无点格不能直接全部认定为自由，需要结合地面观测与人工确认。
+```bash
+ros2 launch lunar_navigation pcd2pgm.launch.py
+# 不打开预览界面
+ros2 launch lunar_navigation pcd2pgm.launch.py rviz:=false
+```
 
-YAML 至少包含图像路径 `image`、分辨率 `resolution`、左下角原点 `origin`、模式 `mode` 和阈值。使用 `mode: trinary`、`negate: 0`、`occupied_thresh: 0.65`、`free_thresh: 0.196` 时，图像语义为：
+上面两条选择一条。默认读取工作区根目录 `maps/site/map.pcd`，转换与保存分工如下：
 
-| 灰度 / HEX | 含义 |
-| --- | --- |
-| 0 / #000000 | 障碍 |
-| 254 或 255 / #FEFEFE 或 #FFFFFF | 自由 |
-| 205 / #CDCDCD | 未知 |
+```text
+map.pcd → 第三方 pcd2pgm 节点 → /pcd2pgm/map
+                                  ↓ Nav2 map_saver_cli 自动保存
+                            maps/site/map.pgm + map.yaml
+```
 
-Nav2 支持 PGM 或 PNG，YAML 的 image 指向实际文件。生成时的 resolution 和 origin 必须与图像及 PCD 对齐，不能复制另一场地地图的原点。
+保存成功后可在终端看到 map_saver_cli 的成功信息；转换节点继续提供预览，按 Ctrl+C 结束该 launch。重复转换会覆盖同名 YAML/PGM，但不修改 PCD 或人工编辑的 PNG。使用独立 `/pcd2pgm/map` 话题，不覆盖运行中的 Nav2 `/map`。
+
+默认工具为子模块 `src/third_party/pcd2pgm`，来源 [LihanChen2004/pcd2pgm](https://github.com/LihanChen2004/pcd2pgm)，固定兼容本机 Humble 的提交 `f24907dd61bb33f44a7a3c6b2feb8577935da353`。子模块没有源码修改。后续提交引入了当前 ament_cmake_auto 不支持的 USE_SCOPED_HEADER_INSTALL_DIR；所选提交与最新版的转换算法源码相同。
+
+本地参数位于 `src/lunar_navigation/config/pcd2pgm.yaml`：
+
+- 不改变点云坐标：`odom_to_lidar_odom` 六个值保持零。
+- 分辨率 0.05 m/格；半径去噪 0.2 m、最少 2 个邻居。
+- 当前默认保留 map 中 z=-0.13846 至 0.41154 m 的障碍点，相当于初始地面 z=-0.23846 m 以上 0.10–0.65 m；地面和天花板不直接投成障碍。地图高度不同时修改这两个绝对 Z 阈值。
+- `flag_pass_through=false` 在上游实际表示保留高度带（PCL setNegative=false）；true 是反选，不是关闭滤波。
+- 上游将障碍包围框内的其余格默认设为自由，不会像备用工具那样保留全部无观测格为未知。空白处不等于真实观测过的通道，边界及未扫描区域需人工确认后修图。
+
+其他场地可覆盖输入、输出前缀或完整参数文件：
+
+```bash
+ros2 launch lunar_navigation pcd2pgm.launch.py \
+  pcd:=/absolute/site/map.pcd output:=/absolute/site/map rviz:=false
+```
+
+`output` 不带扩展名；`params_file:=绝对路径` 可替换本地滤波配置。保存使用 trinary、negate=0、occupied_thresh=0.65、free_thresh=0.196，黑色表示障碍，白色表示自由，灰色表示未知；默认上游图通常只有自由和障碍。
+
+#### 备用：自有离线转换器
+
+自写 `pcd_to_grid` 保留，不作为默认入口：
+
+```bash
+ros2 run lunar_navigation pcd_to_grid
+```
+
+同样默认读写根目录 maps/site/。它用启动 IMU 附近 3 m 内、z<0 的点拟合近水平地面，地面观测标自由，地面上 0.10–0.65 m 障碍标黑，无观测格保留未知；拟合失败可用 `--ground-z` 指定地面高度。与默认第三方工具的自由/未知处理不同。参数列表见 `ros2 run lunar_navigation pcd_to_grid --help`。
 
 ### 4.4 人工修图
 
@@ -219,14 +255,13 @@ python3 -c "from PIL import Image; Image.open('maps/site/map.pgm').convert('L').
 
 ## 5. 阶段二：单独验证重定位
 
-停止阶段一建图进程，再运行：
+停止阶段一建图进程，保留单独的雷达驱动终端，再运行：
 
 ```bash
-ros2 launch lunar_hardware_bringup localization.launch.py \
-  pcd:="$PWD/maps/site/map.pcd" base_z:=-0.05738
+ros2 launch lunar_hardware_bringup localization.launch.py
 ```
 
-当前代码保留 base_z 参数。按当前 URDF、建图启动水平且重定位位于同一层平地的约定，采用上面的 -0.05738 m 初值；它来自 body→base_link 的安装高度，不需要每次重新量地面。它是初始猜测，最终三维位姿由 ICP 求解；不同高度楼层或经过额外坐标变换的地图需提供对应初始高度。
+默认读取 `maps/site/map.pcd`，其他地图可传 `pcd:=绝对路径`。`base_z` 默认 auto：根据 URDF 安装 TF 和建图启动 body 高度为 0 的约定，自动得到同层平地的车身高度初值，当前安装约为 -0.05738 m，无需手动填写。它是初始猜测，最终三维位姿由 ICP 求解；不同高度楼层或经过额外坐标变换的地图可显式传 `base_z:=地图中车身高度`。
 
 启动后保存的 PCD 会先显示在 RViz。操作顺序：
 
@@ -247,12 +282,11 @@ ros2 service call /localizer/relocalize_check interface/srv/IsValid '{code: 0}'
 
 ### 6.1 分终端启动
 
-如果阶段二仍在运行，保留它，直接启动底盘与导航；不要重复启动定位。若从零开始，按下面三个终端分别启动，每个终端先加载环境：
+首先保持第 3.1 节单独启动的雷达驱动运行。如果阶段二仍在运行，保留定位，直接启动底盘与导航；不要重复启动定位。若从零开始，先启动雷达驱动，再按下面三个终端分别启动，每个终端先加载环境：
 
 ```bash
 # 终端 A：三维重定位，使用导航 RViz 统一显示
-ros2 launch lunar_hardware_bringup localization.launch.py \
-  pcd:="$PWD/maps/site/map.pcd" base_z:=-0.05738 rviz:=false
+ros2 launch lunar_hardware_bringup localization.launch.py rviz:=false
 ```
 
 ```bash
@@ -262,10 +296,10 @@ ros2 launch lunar_hardware_bringup chassis.launch.py port_name:=can0
 
 ```bash
 # 终端 C：二维地图和 Nav2
-ros2 launch lunar_navigation navigation.launch.py map:="$PWD/maps/site/map.yaml"
+ros2 launch lunar_navigation navigation.launch.py
 ```
 
-导航 launch 自己启动 map_server，但不启动 AMCL、雷达、LIO、localizer、description 或底盘。PCD 与二维 YAML 必须属于同一场地、同一 map 坐标。
+导航默认读取 `maps/site/map.yaml`；其他场地可传 `map:=绝对路径`。导航 launch 自己启动 map_server，但不启动 AMCL、雷达、LIO、localizer、description 或底盘。PCD 与二维 YAML 必须属于同一场地、同一 map 坐标。
 
 ### 6.2 下发目标与结束运行
 
@@ -325,11 +359,14 @@ LIO 初始化以 IMU 为局部原点，PGO 初始 map→lidar 为单位变换；
 | [livox_ros_driver2](https://github.com/Livox-SDK/livox_ros_driver2) | master | 雷达/IMU 驱动 |
 | [ugv_sdk](https://github.com/agilexrobotics/ugv_sdk) | main | 底盘通信 SDK |
 | [scout_ros2](https://github.com/agilexrobotics/scout_ros2) | humble | 底盘驱动及消息；不使用其中的 Scout 2.0 模型 |
+| [pcd2pgm](https://github.com/LihanChen2004/pcd2pgm) | main，固定 f24907d | 默认 PCD 转 OccupancyGrid，配合 Nav2 保存二维地图 |
 
 FASTLIO2 的唯一现有构建补丁为 `patches/fastlio2-sophus.patch`，为 lio_node 链接 Sophus::Sophus，根脚本幂等应用。`.gitmodules` 的 `ignore=dirty` 仅隐藏该子模块工作区修改提示；提交版本变更仍可见，补丁仍由主仓库保存，不需要 fork。
 
 ## 8. 当前验证范围
 
-已完成两个新包编译、launch 参数解析、12 项位姿转换回归，以及隔离 ROS 域的建图入口启动、PCD 预览、真实 localizer 对合成点云的初始匹配、Nav2 生命周期激活、NavFn 路径规划、RPP 速度输出和目标取消。软件联调没有连接雷达或真实底盘。
+已完成两个新包编译、launch 参数解析和 31 项位姿/入口/地图转换回归。隔离 ROS 域中已串联 PCD 转图、真实 localizer 对合成点云的初始匹配、Nav2 地图加载及生命周期激活、NavFn 路径规划、RPP 速度输出和目标取消；自动高度推导后的 base_link 与 RViz 初值一致。软件联调没有连接雷达或真实底盘。转换回归覆盖三种 PCD 格式、近水平地面拟合、图像上下方向、原点、障碍优先级、未知区和无效输入；硬件入口验证不启动雷达驱动，默认地图路径不受终端目录影响。
 
-尚待完成：PCD 转二维图工具、实际场地建图/重定位验证、实车路径跟踪与停车调参。
+第三方默认入口也已在隔离 ROS 域中实际读取合成 PCD、过滤地面/高处回波、生成并导出 PGM/YAML，坐标与原 PCD 一致，转换话题未占用 /map。备用转换器继续保留其三种 PCD 格式回归。
+
+尚待完成：实际场地建图/转换/重定位效果验证、实车路径跟踪与停车调参。
